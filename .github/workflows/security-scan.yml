@@ -1,0 +1,53 @@
+name: Security Scan
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit semgrep pylint safety
+
+      - name: Create reports directory
+        run: mkdir -p security-reports
+
+      - name: Run Bandit scan
+        run: |
+          bandit -r . -f json -o security-reports/bandit-results.json || true
+
+      - name: Run Semgrep scan
+        run: |
+          semgrep --config=auto . --json -o security-reports/semgrep-results.json || true
+
+      - name: Run PyLint security checks
+        run: |
+          pylint *.py --disable=all --enable=W,E > security-reports/pylint-results.txt || true
+
+      - name: Run Safety dependency check
+        run: |
+          safety check --json > security-reports/safety-results.json || true
+
+      - name: Check for HIGH severity Bandit findings
+        run: |
+          python -c "import json; f=open('security-reports/bandit-results.json'); data=json.load(f); high=data['metrics']['_totals']['SEVERITY.HIGH']; print(f'HIGH severity findings: {high}'); exit(1 if high > 0 else 0)"
+
+      - name: Upload scan reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: security-reports/
